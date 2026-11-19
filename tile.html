@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="zxx" translate="no">
+<head>
+<meta charset="utf-8">
+<title>&#8203;</title>
+<link id="fav" rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=">
+<style>html,body{margin:0;height:100%;background:#000;color:#555;font:12px monospace;display:grid;place-items:center}</style>
+</head>
+<body>
+<div id="info"></div>
+<script>
+/* 一個分頁 = 一顆 16×16 像素。只訂閱自己的頻道：主控台只在「這一格的像素真的變了」時才送訊息，
+   畫面不變的格子完全不會被喚醒。 */
+(function () {
+  'use strict';
+  const q = new URLSearchParams(location.search);
+  const r = +q.get('r') || 0, c = +q.get('c') || 0;
+  document.getElementById('info').textContent = `tile r${r} c${c}`;
+  const fav = document.getElementById('fav');
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 16;
+  const ctx = cv.getContext('2d');
+  const img = ctx.createImageData(16, 16);
+  const cache = new Map();              // 圖樣 → data URL（全黑、全白等大量重複）
+  let updates = 0;
+  const ctl = new BroadcastChannel('bam-ctl');
+  const ch = new BroadcastChannel(`bam-t-${r}-${c}`);
+
+  ctl.onmessage = e => { if (e.data.type === 'reload') location.reload(); };
+  ctl.postMessage({ type: 'hello', r, c });          // 剛開好（或重新整理）→ 請主控台補送目前畫面
+
+  // 合併：處理程序忙的時候訊息會排隊。收到訊息只記下「最新的一筆」，排在所有已排隊訊息之後才真正畫一次，
+  // 舊的幀直接丟掉 → 不會越落越遠，也不會「醒來後補播」。
+  let pending = null, shownN = -1, scheduled = false;
+  const tick = new MessageChannel();
+  tick.port1.onmessage = apply;
+  ch.onmessage = e => {
+    if (!pending || e.data.n > pending.n) pending = e.data;
+    if (!scheduled) { scheduled = true; tick.port2.postMessage(0); }
+  };
+  function apply() {
+    scheduled = false;
+    const d = pending;
+    pending = null;
+    if (!d || d.n <= shownN) return;
+    shownN = d.n;
+    let url = cache.get(d.key);
+    if (!url) {
+      const px = img.data, fg = d.fg, bg = d.bg, bits = d.bits;
+      for (let i = 0; i < 256; i++) {
+        const col = (bits[i >> 3] >> (7 - (i & 7))) & 1 ? fg : bg, j = i * 4;
+        px[j] = col[0]; px[j + 1] = col[1]; px[j + 2] = col[2]; px[j + 3] = 255;
+      }
+      ctx.putImageData(img, 0, 0);
+      url = cv.toDataURL('image/png');
+      if (cache.size > 4096) cache.clear();
+      cache.set(d.key, url);
+    }
+    fav.href = url;
+    updates++;
+    // 抽樣回報延遲（約每 40 次更新回報一次），主控台據此統計、必要時自動降低更新率
+    if (Math.random() < 0.025) {
+      ctl.postMessage({ type: 'lat', r, c, ms: performance.timeOrigin + performance.now() - d.t });
+    }
+  }
+})();
+</script>
+</body>
+</html>

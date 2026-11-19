@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zxx" translate="no">
+<head>
+<meta charset="utf-8">
+<title>ROW</title>
+<link rel="icon" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=">
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #666; font: 13px/1.6 ui-monospace, Consolas, monospace; }
+  body { display: grid; place-items: center; text-align: center; }
+</style>
+</head>
+<body>
+<div id="t"></div>
+<script>
+  // 每個視窗第一個（作用中）分頁。它的 ✕ 會佔掉一格，所以不放像素；標題 "ROW nn" 讓 arrange.ps1 找到視窗。
+  const r = +new URLSearchParams(location.search).get('r') || 0;
+  document.title = 'ROW ' + String(r).padStart(2, '0');
+  document.getElementById('t').textContent = 'row ' + r + ' · keep this tab active';
+</script>
+</body>
+</html>

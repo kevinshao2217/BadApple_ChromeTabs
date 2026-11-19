@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tab Matrix — master</title>
+<style>
+  :root { --bg:#0c0d10; --panel:#14161b; --line:#272b33; --text:#e2e5ea; --muted:#8a919b; --acc:#3ab9f2; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", "Microsoft JhengHei", sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); flex-wrap:wrap; }
+  h1 { font-size:15px; margin:0; }
+  .muted { color: var(--muted); }
+  main { display:grid; grid-template-columns: minmax(0,1fr) 320px; min-height: calc(100vh - 50px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .stage { padding:16px; display:flex; flex-direction:column; gap:10px; min-width:0; }
+  .preview { background:#000; border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; }
+  canvas#pv { display:block; max-width:100%; image-rendering: pixelated; }
+  .bar { display:flex; gap:8px; align-items:center; }
+  .bar input[type=range] { flex:1; accent-color: var(--acc); }
+  .mono { font: 12px ui-monospace, Consolas, monospace; color: var(--muted); }
+  aside { border-left:1px solid var(--line); background:var(--panel); padding:10px 14px 24px; overflow:auto; }
+  fieldset { border:0; border-bottom:1px solid var(--line); margin:0; padding:8px 0 12px; }
+  legend { font-weight:600; padding:6px 0; }
+  .row { display:grid; grid-template-columns: 104px 1fr; gap:8px; align-items:center; margin:6px 0; }
+  .row label { color: var(--muted); font-size:13px; }
+  input[type=number], select { width:100%; background:#1b1e24; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font:inherit; }
+  input[type=range] { width:100%; accent-color: var(--acc); }
+  button, .btn { background:#1b1e24; color:var(--text); border:1px solid var(--line); border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer; }
+  button:hover, .btn:hover { border-color: var(--acc); }
+  .primary { background: var(--acc); color:#04131b; border-color: var(--acc); font-weight:600; }
+  code { background:#1b1e24; padding:2px 6px; border-radius:4px; font-size:12px; word-break: break-all; }
+  .note { color: var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Tab Matrix</h1>
+  <span class="muted">用 Chrome 分頁的 favicon 當像素播放影片</span>
+  <span style="flex:1"></span>
+  <label class="btn primary" for="file">開啟影片</label>
+  <input id="file" type="file" accept="video/*" hidden>
+</header>
+<main>
+  <section class="stage">
+    <div class="preview"><canvas id="pv"></canvas></div>
+    <div class="bar">
+      <button id="play" type="button">▶ 播放</button>
+      <input id="seek" type="range" min="0" max="1000" value="0" aria-label="時間">
+      <span class="mono" id="time">0:00 / 0:00</span>
+      <select id="slow" title="播放速度" aria-label="播放速度">
+        <option value="1">原速（有聲音）</option>
+        <option value="2">1/2 慢速</option>
+        <option value="3">1/3 慢速</option>
+        <option value="4">1/4 慢速</option>
+        <option value="6">1/6 慢速</option>
+        <option value="8">1/8 慢速</option>
+        <option value="16">1/16 慢速</option>
+        <option value="30">1/30（每幀 1 秒）</option>
+      </select>
+    </div>
+    <div class="mono" id="slow-info" hidden></div>
+    <div class="mono" id="stat">尚未收到分頁回報。先用 spawn_matrix.bat 開分頁。</div>
+    <video id="v" playsinline preload="auto" style="display:none"></video>
+  </section>
+  <aside>
+    <fieldset>
+      <legend>矩陣</legend>
+      <div class="row"><label for="rows">排數（視窗）</label><input id="rows" type="number" min="1" max="64" value="3"></div>
+      <div class="row"><label for="cols">每排分頁</label><input id="cols" type="number" min="1" max="200" value="40"></div>
+      <div class="row"><label for="px">橫向間距 px</label><input id="px" type="number" min="1" step="0.5" value="48"></div>
+      <div class="row"><label for="py">縱向間距 px</label><input id="py" type="number" min="1" step="0.5" value="45"></div>
+      <p class="note">間距 = 螢幕上相鄰兩顆 favicon 的距離，只用來算畫面比例，讓影片不變形。</p>
+    </fieldset>
+    <fieldset>
+      <legend>畫面</legend>
+      <div class="row"><label for="fit">縮放</label>
+        <select id="fit"><option value="contain">完整顯示（補邊）</option><option value="cover">填滿（裁切）</option><option value="stretch">拉伸</option></select></div>
+      <div class="row"><label for="thr">亮度門檻</label><input id="thr" type="range" min="1" max="254" value="128"></div>
+      <div class="row"><label for="pal">配色</label>
+        <select id="pal">
+          <option value="bw">黑白（原版）</option>
+          <option value="wb">反相</option>
+          <option value="cyan">霓虹青</option>
+          <option value="green">終端機綠</option>
+          <option value="amber">琥珀</option>
+        </select></div>
+      <div class="row"><label for="fps">更新率</label>
+        <select id="fps"><option>5</option><option>10</option><option selected>15</option><option>20</option><option>30</option></select></div>
+      <div class="row"><label for="auto">自動降幀</label><input id="auto" type="checkbox" checked style="justify-self:start"></div>
+      <p class="note">分頁回報的延遲變大（Chrome 跟不上）時自動降低更新率，順了再慢慢調回上限。</p>
+      <div class="row"><label for="pad">補邊顏色</label>
+        <select id="pad"><option value="0">黑</option><option value="255">白</option></select></div>
+    </fieldset>
+    <fieldset>
+      <legend>生成與位置</legend>
+      <p class="note">用上面的「排數 × 每排分頁」開出像素視窗，並依下面的位置疊好。數字都是螢幕實體像素。</p>
+      <div class="row"><label for="sx">左邊 x</label><input id="sx" type="number" step="1" value="0"></div>
+      <div class="row"><label for="sy">頂端 y</label><input id="sy" type="number" step="1" value="0"></div>
+      <div class="row"><label for="sw">視窗寬</label><input id="sw" type="number" step="1" value="0"></div>
+      <div class="row"><label for="pitch">每排間距</label><input id="pitch" type="number" min="10" step="1" value="45"></div>
+      <div class="row"><label for="sfrom">從第幾排開</label><input id="sfrom" type="number" min="0" step="1" value="0"></div>
+      <p class="note">視窗寬 0 = 整個螢幕寬。第 r 排放在 y = 頂端 + r × 每排間距，每個視窗都盡量矮，彼此只露出分頁列。每排最左邊是作用中的 ROW 分頁（顯示 ✕），不放像素。</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:8px 0">
+        <button id="b-spawn" class="primary" type="button">生成視窗</button>
+        <button id="b-arrange" type="button">重新排列</button>
+        <button id="b-close" type="button">關閉全部像素視窗</button>
+      </div>
+      <pre id="spawn-log" class="note" style="white-space:pre-wrap;margin:6px 0 10px;max-height:160px;overflow:auto"></pre>
+      <button id="resync" type="button">重新同步畫面</button>
+      <button id="reload" type="button">重新整理所有像素分頁</button>
+    </fieldset>
+  </aside>
+</main>
+<script>
+(function () {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const v = $('v'), pv = $('pv'), pctx = pv.getContext('2d');
+  const work = document.createElement('canvas');
+  const wctx = work.getContext('2d', { willReadFrequently: true });
+  const PAL = {
+    bw: [[255, 255, 255], [0, 0, 0]], wb: [[0, 0, 0], [255, 255, 255]],
+    cyan: [[58, 230, 255], [4, 10, 18]], green: [[60, 255, 120], [0, 12, 0]], amber: [[255, 176, 40], [16, 8, 0]],
+  };
+  const KEYS = ['rows', 'cols', 'px', 'py', 'fit', 'thr', 'pal', 'fps', 'pad', 'sx', 'sy', 'sw', 'pitch', 'sfrom', 'slow'];
+
+  // 參數：網址 → localStorage → 預設
+  const q = new URLSearchParams(location.search);
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem('tab-matrix') || '{}'); } catch (e) { /* 忽略 */ }
+  for (const k of KEYS) {
+    const val = q.get(k) ?? saved[k];
+    if (val !== undefined && val !== null) $(k).value = val;
+  }
+  const cfg = () => ({
+    rows: Math.max(1, +$('rows').value | 0), cols: Math.max(1, +$('cols').value | 0),
+    px: +$('px').value || 48, py: +$('py').value || 45, fit: $('fit').value, thr: +$('thr').value,
+    pal: $('pal').value, fps: +$('fps').value, pad: +$('pad').value,
+    sx: +$('sx').value || 0, sy: +$('sy').value || 0, sw: +$('sw').value || 0, pitch: +$('pitch').value || 45,
+    sfrom: Math.max(0, +$('sfrom').value | 0),
+  });
+  function onCfg() {
+    const c = cfg();
+    try { localStorage.setItem('tab-matrix', JSON.stringify(c)); } catch (e) { /* 忽略 */ }
+    openChannels();
+    forceAll();
+  }
+  KEYS.forEach(k => $(k).addEventListener('input', onCfg));
+
+  // 每個分頁一個頻道；只對「像素有變」的分頁送訊息（Bad Apple 大部分格子大部分時間是純黑或純白）
+  let chans = [], lastBits = [], gridKey = '';
+  function openChannels() {
+    const c = cfg(), k = c.rows + 'x' + c.cols;
+    if (k === gridKey) return;
+    gridKey = k;
+    chans.forEach(row => row.forEach(ch => ch.close()));
+    chans = Array.from({ length: c.rows }, (_, r) => Array.from({ length: c.cols }, (_, col) => new BroadcastChannel(`bam-t-${r}-${col}`)));
+    lastBits = Array.from({ length: c.rows }, () => Array.from({ length: c.cols }, () => ''));
+  }
+  const forceAll = () => { lastBits.forEach(row => row.fill('')); dirty = true; };
+  const ctl = new BroadcastChannel('bam-ctl');
+
+  // 影片
+  function load(url) { v.src = url; v.load(); }
+  $('file').addEventListener('change', e => { const f = e.target.files[0]; if (f) load(URL.createObjectURL(f)); });
+  fetch('bad_apple.mp4', { method: 'HEAD' }).then(r => { if (r.ok && !v.src) load('bad_apple.mp4'); }).catch(() => {});
+  v.addEventListener('loadeddata', () => { dirty = true; });
+  v.addEventListener('seeked', () => { dirty = true; });
+  // ---- 慢速錄影模式：逐幀跳轉，每幀固定停留 k 倍時間（靜音），錄下來後製加速 k 倍就是原速 ----
+  const SRC_FPS = 30;                                  // Bad Apple 原片 30 fps
+  const slowK = () => +$('slow').value || 1;
+  let step = null;                                     // { t0, f0, hold, cur }
+  const stepTimer = new Worker(URL.createObjectURL(new Blob(['setInterval(()=>postMessage(0),4)'], { type: 'text/javascript' })));
+  stepTimer.onmessage = () => {
+    if (!step || !v.duration) return;
+    const total = Math.floor(v.duration * SRC_FPS);
+    const f = step.f0 + Math.floor((performance.now() - step.t0) / step.hold);
+    if (f >= total) { stopStep(); return; }
+    if (f !== step.cur && !v.seeking) {                // 依時間算出「現在該顯示第幾幀」，不會累積誤差
+      step.cur = f;
+      v.currentTime = (f + 0.5) / SRC_FPS;             // 跳到該幀正中間，保證畫面正確
+    }
+  };
+  function startStep() {
+    const k = slowK();
+    v.pause();
+    const f0 = Math.floor(v.currentTime * SRC_FPS);
+    step = { t0: performance.now(), f0, hold: 1000 * k / SRC_FPS, cur: -1 };
+    $('play').textContent = '❚❚ 暫停';
+    $('slow-info').hidden = false;
+    $('slow-info').textContent = `慢速 1/${k}：每幀停留 ${step.hold.toFixed(1)} ms，從原片第 ${f0} 幀開始（靜音）。錄下來後製加速 ${k} 倍（${(k * 100).toFixed(0)}%）＝原速，再從原片第 ${f0} 幀（${(f0 / SRC_FPS).toFixed(3)} 秒）處對上音樂。`;
+  }
+  function stopStep() {
+    step = null;
+    $('play').textContent = '▶ 播放';
+  }
+  $('play').addEventListener('click', () => {
+    if (step) { stopStep(); return; }
+    if (!v.paused) { v.pause(); return; }
+    if (slowK() > 1) startStep(); else v.play();
+  });
+  $('slow').addEventListener('change', () => {
+    const was = step || !v.paused;
+    stopStep(); v.pause();
+    if (slowK() === 1) $('slow-info').hidden = true;
+    if (was) $('play').click();
+  });
+  v.addEventListener('seeked', () => { if (step) tick(); });   // 慢速模式：每跳一幀立刻送出，不等計時器
+  v.addEventListener('play', () => $('play').textContent = '❚❚ 暫停');
+  v.addEventListener('pause', () => { if (!step) $('play').textContent = '▶ 播放'; });
+  let seeking = false;
+  $('seek').addEventListener('input', e => { seeking = true; if (step) stopStep(); if (v.duration) v.currentTime = v.duration * e.target.value / 1000; });
+  $('seek').addEventListener('change', () => { seeking = false; });
+  // 生成／排列／關閉：交給本機伺服器執行 chrome.exe 與 arrange.ps1
+  async function call(name, extra) {
+    const c = cfg();
+    const body = Object.assign({ rows: c.rows, cols: c.cols, from: c.sfrom, left: c.sx, top: c.sy,
+      width: c.sw > 0 ? c.sw : -1, pitch: c.pitch }, extra || {});
+    const log = $('spawn-log');
+    log.textContent = { spawn: '生成中…（每排約 1 秒）', arrange: '排列中…', close: '關閉中…' }[name];
+    ['b-spawn', 'b-arrange', 'b-close'].forEach(id => $(id).disabled = true);
+    try {
+      const r = await fetch('api/' + name, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await r.json();
+      log.textContent = d.msg || (d.ok ? '完成' : '失敗');
+      if (name === 'close') joined.clear();
+      if (name === 'spawn') forceAll();
+    } catch (e) {
+      log.textContent = '連不到本機伺服器：請用 spawn_matrix.bat 開啟這個頁面。（' + e.message + '）';
+    } finally {
+      ['b-spawn', 'b-arrange', 'b-close'].forEach(id => $(id).disabled = false);
+    }
+  }
+  $('b-spawn').addEventListener('click', () => call('spawn'));
+  fetch('api/version').then(r => r.json()).then(d => {
+    if ((d.version | 0) < 3) $('spawn-log').textContent = '本機伺服器是舊版：關掉「tab-matrix server」視窗（或整個重開機），再執行 spawn_matrix.bat。';
+  }).catch(() => { $('spawn-log').textContent = '本機伺服器是舊版或沒有啟動：關掉「tab-matrix server」視窗後重新執行 spawn_matrix.bat。'; });
+  $('b-arrange').addEventListener('click', () => call('arrange'));
+  $('b-close').addEventListener('click', () => { if (confirm('關閉所有 ROW 視窗（含其中的像素分頁）？')) call('close'); });
+
+  $('reload').addEventListener('click', () => ctl.postMessage({ type: 'reload' }));
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && e.target.tagName !== 'INPUT' && e.target.tagName !== 'SELECT') { e.preventDefault(); $('play').click(); }
+  });
+  const fmt = s => { s = s || 0; const m = Math.floor(s / 60); return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`; };
+
+  // 一幀：影片 → (cols·16)×(rows·16) 格點 → 二值 → 每排打包成 cols×32 bytes 送出
+  let dirty = true, frameNo = 0, lastFrameT = -1;
+  function tick() {
+    const c = cfg();
+    if (!v.videoWidth) { drawPreview(null, c); return; }
+    const t = v.currentTime;
+    if (!dirty && v.paused && t === lastFrameT) return;
+    dirty = false; lastFrameT = t;
+    const W = c.cols * 16, H = c.rows * 16;
+    if (work.width !== W || work.height !== H) { work.width = W; work.height = H; }
+    // 實體畫面比例（含分頁間距）→ 格點座標
+    const PW = c.cols * c.px, PH = c.rows * c.py;
+    const va = v.videoWidth / v.videoHeight;
+    let sx = 0, sy = 0, sw = v.videoWidth, sh = v.videoHeight, dx = 0, dy = 0, dw = PW, dh = PH;
+    if (c.fit === 'contain') {
+      if (va > PW / PH) { dh = PW / va; dy = (PH - dh) / 2; } else { dw = PH * va; dx = (PW - dw) / 2; }
+    } else if (c.fit === 'cover') {
+      if (va > PW / PH) { sw = v.videoHeight * PW / PH; sx = (v.videoWidth - sw) / 2; }
+      else { sh = v.videoWidth * PH / PW; sy = (v.videoHeight - sh) / 2; }
+    }
+    const kx = 16 / c.px, ky = 16 / c.py;
+    wctx.fillStyle = `rgb(${c.pad},${c.pad},${c.pad})`;
+    wctx.fillRect(0, 0, W, H);
+    wctx.imageSmoothingEnabled = true; wctx.imageSmoothingQuality = 'high';
+    wctx.drawImage(v, sx, sy, sw, sh, dx * kx, dy * ky, dw * kx, dh * ky);
+    const px = wctx.getImageData(0, 0, W, H).data;
+    const [fg, bg] = PAL[c.pal] || PAL.bw;
+    const now = performance.timeOrigin + performance.now();
+    const bin = new Uint8Array(W * H);
+    for (let i = 0, j = 0; i < bin.length; i++, j += 4) bin[i] = ((px[j] * 77 + px[j + 1] * 150 + px[j + 2] * 29) >> 8) > c.thr ? 1 : 0;
+    let sent = 0;
+    for (let r = 0; r < c.rows; r++) {
+      for (let col = 0; col < c.cols; col++) {
+        const bits = new Uint8Array(32);
+        for (let y = 0; y < 16; y++) {
+          const base = (r * 16 + y) * W + col * 16;
+          let b0 = 0, b1 = 0;
+          for (let x = 0; x < 8; x++) { b0 = (b0 << 1) | bin[base + x]; b1 = (b1 << 1) | bin[base + 8 + x]; }
+          bits[y * 2] = b0; bits[y * 2 + 1] = b1;
+        }
+        let key = c.pal;
+        for (let i = 0; i < 32; i++) key += String.fromCharCode(bits[i]);
+        if (key === lastBits[r][col]) continue;          // 這一格沒變 → 不送、不喚醒那個分頁
+        lastBits[r][col] = key;
+        chans[r][col].postMessage({ n: now, t: now, key, bits, fg, bg });   // n 用時間戳，主控台重開也不會被分頁當成舊幀
+        sent++;
+      }
+    }
+    sentWindow.push([now, sent]);
+    frameNo++;
+    drawPreview(bin, c, fg, bg);
+    $('time').textContent = `${fmt(t)} / ${fmt(v.duration)}`;
+    if (!seeking && v.duration) $('seek').value = Math.round(1000 * t / v.duration);
+  }
+
+  // 預覽：照實際分頁間距畫，跟分頁列看起來一樣
+  function drawPreview(bin, c, fg = [255, 255, 255], bg = [0, 0, 0]) {
+    const s = Math.max(1, Math.min(4, Math.floor(900 / (c.cols * c.px) * 2) / 2 || 1));
+    const cw = c.px * s * 0.6, ch = c.py * s * 0.6, ico = 16 * s * 0.6;
+    const W = Math.round(c.cols * cw), H = Math.round(c.rows * ch);
+    if (pv.width !== W || pv.height !== H) { pv.width = W; pv.height = H; }
+    pctx.fillStyle = '#202227'; pctx.fillRect(0, 0, W, H);
+    if (!bin) return;
+    const img = pctx.createImageData(16, 16);
+    const tmp = document.createElement('canvas'); tmp.width = tmp.height = 16;
+    const tctx = tmp.getContext('2d');
+    pctx.imageSmoothingEnabled = false;
+    const Wg = c.cols * 16;
+    for (let r = 0; r < c.rows; r++) for (let col = 0; col < c.cols; col++) {
+      for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+        const on = bin[(r * 16 + y) * Wg + col * 16 + x], k = (y * 16 + x) * 4, cc = on ? fg : bg;
+        img.data[k] = cc[0]; img.data[k + 1] = cc[1]; img.data[k + 2] = cc[2]; img.data[k + 3] = 255;
+      }
+      tctx.putImageData(img, 0, 0);
+      pctx.drawImage(tmp, col * cw + (cw - ico) / 2, r * ch + (ch - ico) / 2, ico, ico);
+    }
+  }
+
+  // 計時：放在 Worker 裡（主控台被其他視窗蓋住時，頁面計時器會被降頻；Worker 與播放中的聲音不會）
+  const workerSrc = 'let id=0;onmessage=e=>{clearInterval(id);id=setInterval(()=>postMessage(0),e.data)}';
+  const worker = new Worker(URL.createObjectURL(new Blob([workerSrc], { type: 'text/javascript' })));
+  worker.onmessage = tick;
+  let curFps = 0, effFps = 0;
+  const FPS_STEPS = [5, 8, 10, 12, 15, 20, 24, 30];
+  setInterval(() => {
+    const max = cfg().fps;
+    if (!effFps || effFps > max || !$('auto').checked) effFps = max;
+    if (effFps !== curFps) { curFps = effFps; worker.postMessage(1000 / effFps); }
+  }, 250);
+  $('resync').addEventListener('click', () => forceAll());
+
+  // 統計：每秒實際送出的 favicon 更新數（= Chrome 分頁列每秒要重畫的圖示數）
+  const sentWindow = [];
+  const joined = new Set();
+  let lat = [];                                       // [時間, 延遲 ms, 分頁]
+  let goodSince = 0;
+  ctl.onmessage = e => {
+    const d = e.data;
+    if (d.type === 'hello') {                          // 有分頁剛開好 → 補送它目前的畫面
+      joined.add(d.r + ',' + d.c);
+      if (lastBits[d.r] && lastBits[d.r][d.c] !== undefined) { lastBits[d.r][d.c] = ''; dirty = true; }
+    } else if (d.type === 'lat') {
+      lat.push([performance.timeOrigin + performance.now(), d.ms, d.r + ',' + d.c]);
+    }
+  };
+  setInterval(() => {
+    const now = performance.timeOrigin + performance.now();
+    while (sentWindow.length && now - sentWindow[0][0] > 1000) sentWindow.shift();
+    const ups = sentWindow.reduce((a, x) => a + x[1], 0);
+    const c = cfg();
+    lat = lat.filter(x => now - x[0] < 2000);
+    const ms = lat.map(x => x[1]).sort((a, b) => a - b);
+    const q = p => ms.length ? ms[Math.min(ms.length - 1, Math.floor(p * ms.length))] : 0;
+    const p50 = q(0.5), p95 = q(0.95);
+    const slow = new Set(lat.filter(x => x[1] > 300).map(x => x[2])).size;
+    // 自動降幀：p95 > 250 ms 就降一級；連續 4 秒 < 80 ms 才升一級
+    if ($('auto').checked && ms.length >= 5 && (!v.paused || step)) {
+      const i = FPS_STEPS.indexOf(FPS_STEPS.reduce((a, b) => Math.abs(b - effFps) < Math.abs(a - effFps) ? b : a));
+      if (p95 > 250) { effFps = FPS_STEPS[Math.max(0, i - 1)]; goodSince = now; }
+      else if (p95 < 80) { if (now - goodSince > 4000) { effFps = Math.min(c.fps, FPS_STEPS[Math.min(FPS_STEPS.length - 1, i + 1)]); goodSince = now; } }
+      else goodSince = now;
+    }
+    $('stat').textContent = `已連線分頁 ${joined.size} / ${c.rows * c.cols} · 目前 ${effFps || c.fps} fps（上限 ${c.fps}）` +
+      ` · 延遲 中位數 ${p50.toFixed(0)} ms / 95% ${p95.toFixed(0)} ms` + (slow ? ` · 落後分頁 ${slow}` : '') +
+      ` · 每秒 favicon 更新 ${ups} 次`;
+  }, 500);
+
+  onCfg();
+})();
+</script>
+</body>
+</html>
