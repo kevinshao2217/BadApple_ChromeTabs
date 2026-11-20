@@ -7,7 +7,7 @@ Bad Apple!! played across hundreds of live Google Chrome browser tabs arranged i
 Each tab acts as an individual display pixel using dynamic favicon rendering, synchronized in real time via `BroadcastChannel` and arranged using Win32 API window overlapping.
 
 <font size="4">**Here is a Demo**</font><br>
-[https://youtu.be/635om6J0NTY](https://youtu.be/635om6J0NTY?si=IloZtKU8JsOKxmEh)
+[https://youtu.be/635om6J0NTY](https://www.youtube.com/watch?v=635om6J0NTY)
 
 ![Bad Apple Chrome Tabs Demo](./assets/demo.png)
 ---
