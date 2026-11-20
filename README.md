@@ -1,7 +1,5 @@
 # bad-apple-but-chrome-tabs
 
-[English](README.md) | [中文](README_zh.md)
-
 Bad Apple!! played across hundreds of live Google Chrome browser tabs arranged in a physical visual matrix.
 
 Each tab acts as an individual display pixel using dynamic favicon rendering, synchronized in real time via `BroadcastChannel` and arranged using Win32 API window overlapping.
