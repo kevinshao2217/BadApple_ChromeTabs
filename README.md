@@ -4,33 +4,8 @@ Bad Apple!! played across hundreds of live Google Chrome browser tabs arranged i
 
 Each tab acts as an individual display pixel using dynamic favicon rendering, synchronized in real time via `BroadcastChannel` and arranged using Win32 API window overlapping.
 
+Here is a Demo on YouTube https://youtu.be/635om6J0NTY?si=IloZtKU8JsOKxmEh
 ---
-
-## Architecture Overview
-
-```
-                      +-----------------------------+
-                      |   master.html (Controller)  |
-                      |  - Video decoding & sampling|
-                      |  - Thresholding & bitmapping|
-                      +--------------+--------------+
-                                     |
-               BroadcastChannel (bam-ctl / bam-t-{r}-{c})
-                                     |
-         +---------------------------+---------------------------+
-         |                           |                           |
-         v                           v                           v
-+------------------+        +------------------+        +------------------+
-| Window 0 (Row 0) |        | Window 1 (Row 1) |        | Window N (Row N) |
-| [Tab 0][Tab 1].. |        | [Tab 0][Tab 1].. |        | [Tab 0][Tab 1].. |
-+------------------+        +------------------+        +------------------+
-         |                           |                           |
-         +---------------------------+---------------------------+
-                                     |
-                     arrange.ps1 (Win32 user32.dll)
-             Overlaps windows vertically with exact pitch
-                   -> Only tab bars remain visible
-```
 
 ### Key Technical Mechanisms
 
