@@ -1,6 +1,6 @@
 # bad-apple-but-chrome-tabs
 
-[English](README.md) | [繁體中文說明文件](README_zh.md)
+[English](README.md) | [中文](README_zh.md)
 
 Bad Apple!! played across hundreds of live Google Chrome browser tabs arranged in a physical visual matrix.
 
