@@ -8,6 +8,7 @@ Each tab acts as an individual display pixel using dynamic favicon rendering, sy
 
 Here is a Demo on YouTube https://youtu.be/635om6J0NTY?si=IloZtKU8JsOKxmEh
 
+![demo](./demo.png)
 ---
 
 ### Key Technical Mechanisms
